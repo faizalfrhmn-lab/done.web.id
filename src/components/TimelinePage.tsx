@@ -6,20 +6,33 @@ import { ChevronLeft, Info, Globe, Lock, Share2 } from "lucide-react";
 import { api } from "../lib/api";
 
 export default function TimelinePage({ isPublicView = false }: { isPublicView?: boolean }) {
-  const { id, timelineId } = useParams();
+  const { id, slug } = useParams();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isPublicView && timelineId) {
-      api.getTimeline(timelineId)
+    if (isPublicView && slug) {
+      // Try by slug first
+      api.getTimelineBySlug(slug)
         .then(tData => {
-          setTimeline(tData);
-          setIsPublic(tData.isPublic);
+          if (tData) {
+            setTimeline(tData);
+            setIsPublic(tData.isPublic);
+          } else {
+            // Check if it's actually a UUID
+            return api.getTimeline(slug).then(tData => {
+              setTimeline(tData);
+              setIsPublic(tData.isPublic);
+            });
+          }
         })
-        .catch(err => console.error("Public Timeline Fetch Error:", err));
+        .catch(err => {
+          setError("Timeline not found or access denied.");
+          console.error("Public Timeline Fetch Error:", err);
+        });
     } else if (id) {
       api.getInvoice(id)
         .then(data => {
@@ -32,7 +45,7 @@ export default function TimelinePage({ isPublicView = false }: { isPublicView?: 
         })
         .catch(err => console.error("Timeline Page Fetch Error:", err));
     }
-  }, [id, timelineId, isPublicView]);
+  }, [id, slug, isPublicView]);
 
   const toggleVisibility = async () => {
     if (isPublicView || !timeline) return;
@@ -45,14 +58,28 @@ export default function TimelinePage({ isPublicView = false }: { isPublicView?: 
     }
   };
 
+  const getSlug = (t: Timeline) => {
+    return `${t.agencyName}-${t.projectName}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  };
+
   const copyPublicLink = () => {
-    const url = `${window.location.origin}/t/${timeline?.id}`;
+    const slugVal = timeline ? getSlug(timeline) : timeline?.id;
+    const url = `${window.location.origin}/t/${slugVal}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (!timeline) return <div className="p-12">Loading Timeline...</div>;
+  if (error) return (
+    <div className="p-12 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-100">
+      {error}
+      <div className="mt-4">
+        <Link to="/" className="text-sm font-medium text-blue-600 hover:underline">Back to Home</Link>
+      </div>
+    </div>
+  );
+
+  if (!timeline) return <div className="p-12 text-center text-gray-500">Loading Timeline...</div>;
 
   const content = (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">

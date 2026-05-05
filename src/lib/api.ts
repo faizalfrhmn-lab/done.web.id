@@ -240,5 +240,52 @@ export const api = {
       authorName: fb.author_name,
       createdAt: fb.created_at
     }));
-  }
+  },
+
+  async getTimelineBySlug(slug: string): Promise<Timeline | null> {
+    // This is a naive implementation because we don't have a slug column.
+    // It fetches all projects and matches manually. If the list is large, this is inefficient.
+    // In a real app, you'd add a 'slug' column to the 'timelines' table.
+    const { data: timelines, error } = await supabase.from("timelines").select("id, agency_name, project_name");
+    if (error) throw error;
+
+    const match = timelines.find(t => {
+      const derivedSlug = `${t.agency_name}-${t.project_name}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      return derivedSlug === slug.toLowerCase();
+    });
+
+    if (match) {
+      return this.getTimeline(match.id);
+    }
+    return null;
+  },
+
+  async updateTimelineEntry(entryId: string, updates: Partial<TimelineEntry>) {
+    const { data, error } = await supabase
+      .from("timeline_entries")
+      .update({
+        description: updates.description,
+        date: updates.date,
+        status: updates.status,
+        type: updates.type
+      })
+      .eq("id", entryId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return {
+      ...data,
+      timelineId: data.timeline_id
+    } as TimelineEntry;
+  },
+
+  async deleteFeedback(feedbackId: string) {
+    const { error } = await supabase
+      .from("timeline_feedback")
+      .delete()
+      .eq("id", feedbackId);
+    
+    if (error) throw error;
+  },
 };

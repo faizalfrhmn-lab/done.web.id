@@ -36,6 +36,12 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"timeline" | "sheet">("timeline");
   const [manualCategory, setManualCategory] = useState("General");
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editDescription, setEditDescription] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [isSyncingDates, setIsSyncingDates] = useState(false);
+  const [isDeletingFeedback, setIsDeletingFeedback] = useState<string | null>(null);
+  const [isUpdatingEntry, setIsUpdatingEntry] = useState<string | null>(null);
 
   const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -77,6 +83,19 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
       console.error("Error submitting feedback:", err);
     } finally {
       setIsSubmittingFeedback(false);
+    }
+  };
+
+  const deleteFeedback = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this feedback?")) return;
+    setIsDeletingFeedback(id);
+    try {
+      await api.deleteFeedback(id);
+      setFeedbacks(prev => prev.filter(fb => fb.id !== id));
+    } catch (err) {
+      console.error("Error deleting feedback:", err);
+    } finally {
+      setIsDeletingFeedback(null);
     }
   };
 
@@ -221,6 +240,71 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
       }
     } catch (err) {
       console.error("Error adding entry:", err);
+    }
+  };
+
+  const startEditing = (entry: TimelineEntry) => {
+    setEditingEntryId(entry.id);
+    setEditDescription(entry.description);
+    setEditDate(new Date(entry.date).toISOString().split("T")[0]);
+    setIsSyncingDates(false);
+  };
+
+  const cancelEditing = () => {
+    setEditingEntryId(null);
+    setEditDescription("");
+    setEditDate("");
+  };
+
+  const saveEntryUpdate = async () => {
+    if (!editingEntryId || !timeline) return;
+    
+    const entry = timeline.entries.find(e => e.id === editingEntryId);
+    if (!entry) return;
+
+    setIsUpdatingEntry(editingEntryId);
+    try {
+      const newDate = new Date(editDate).toISOString();
+      const oldDate = new Date(entry.date).toISOString();
+      
+      const timeDiff = new Date(newDate).getTime() - new Date(oldDate).getTime();
+      
+      let updatedEntries = timeline.entries.map(e => {
+        if (e.id === editingEntryId) {
+          return { ...e, description: editDescription, date: newDate };
+        }
+        
+        // Cascading update
+        if (isSyncingDates && new Date(e.date).getTime() > new Date(oldDate).getTime()) {
+          const currentEntryDate = new Date(e.date).getTime();
+          const shiftedDate = new Date(currentEntryDate + timeDiff).toISOString();
+          return { ...e, date: shiftedDate };
+        }
+        
+        return e;
+      });
+
+      // Update in DB (sequentially if syncing, or just the one)
+      if (isSyncingDates) {
+        // Find entries that shifted
+        const shifted = updatedEntries.filter((e, idx) => e.date !== timeline.entries[idx].date || e.id === editingEntryId);
+        
+        // This is a bit expensive but thorough
+        await Promise.all(shifted.map(e => api.updateTimelineEntry(e.id, { 
+          description: e.id === editingEntryId ? editDescription : e.description, 
+          date: e.date 
+        })));
+      } else {
+        await api.updateTimelineEntry(editingEntryId, { description: editDescription, date: newDate });
+      }
+
+      setTimeline({ ...timeline, entries: updatedEntries });
+      setEditingEntryId(null);
+    } catch (err) {
+      console.error("Error updating entry:", err);
+      alert("Failed to update entry");
+    } finally {
+      setIsUpdatingEntry(null);
     }
   };
 
@@ -584,9 +668,20 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                       <div key={fb.id} className="p-3 bg-gray-50 rounded-xl border border-[#F0F0F0] space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-amber-600">{fb.authorName}</span>
-                          <span className="text-[9px] text-[#999]">
-                            {new Date(fb.createdAt).toLocaleDateString()} {new Date(fb.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] text-[#999]">
+                              {new Date(fb.createdAt).toLocaleDateString()} {new Date(fb.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {!isPublicView && (
+                              <button 
+                                onClick={() => deleteFeedback(fb.id)}
+                                disabled={isDeletingFeedback === fb.id}
+                                className="text-[#999] hover:text-red-500 transition-colors disabled:opacity-50"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <p className="text-xs text-[#444] leading-relaxed">{fb.content}</p>
                       </div>
@@ -630,41 +725,100 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                       {entry.status === TimelineEntryStatus.DONE && <CheckCircle2 size={8} className="text-green-500" />}
                     </div>
 
-                    <div className={`bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm hover:shadow-md transition-shadow group/item flex gap-4 ${
-                      entry.status === TimelineEntryStatus.DONE ? "opacity-60" : ""
-                    }`}>
-                      <button 
-                        onClick={() => !isPublicView && toggleEntryStatus(entry.id, entry.status)}
-                        className={`mt-1 flex-shrink-0 transition-colors ${
-                          entry.status === TimelineEntryStatus.DONE ? "text-green-500" : "text-[#E5E5E5] hover:text-blue-400"
-                        } ${isPublicView ? "cursor-default" : ""}`}
-                      >
-                        {entry.status === TimelineEntryStatus.DONE ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                      </button>
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#999] flex items-center gap-1.5">
-                            <Clock size={12} />
-                            {new Date(entry.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                          </span>
-                          <span 
-                            onClick={() => !isPublicView && cycleStatus(entry.id, entry.status)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-all ${
-                              entry.status === TimelineEntryStatus.DONE ? "bg-green-100 text-green-700" : 
-                              entry.status === TimelineEntryStatus.WAIT_FEEDBACK ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
-                            } ${isPublicView ? "cursor-default" : "cursor-pointer hover:scale-105 active:scale-95"}`}
-                          >
-                            {entry.status}
-                          </span>
+                      <div className={`bg-white p-5 rounded-2xl border border-[#E5E5E5] shadow-sm hover:shadow-md transition-shadow group/item flex gap-4 ${
+                        entry.status === TimelineEntryStatus.DONE ? "opacity-60" : ""
+                      }`}>
+                        <button 
+                          onClick={() => !isPublicView && toggleEntryStatus(entry.id, entry.status)}
+                          className={`mt-1 flex-shrink-0 transition-colors ${
+                            entry.status === TimelineEntryStatus.DONE ? "text-green-500" : "text-[#E5E5E5] hover:text-blue-400"
+                          } ${isPublicView ? "cursor-default" : ""}`}
+                        >
+                          {entry.status === TimelineEntryStatus.DONE ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                        </button>
+                        
+                        <div className="flex-1 min-w-0">
+                          {editingEntryId === entry.id ? (
+                            <div className="space-y-3">
+                              <div className="flex gap-2">
+                                <input 
+                                  type="date"
+                                  value={editDate}
+                                  onChange={(e) => setEditDate(e.target.value)}
+                                  className="p-2 border border-[#E5E5E5] rounded-xl text-xs bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <label className="flex items-center gap-2 text-[10px] font-bold text-[#666] cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={isSyncingDates}
+                                    onChange={(e) => setIsSyncingDates(e.target.checked)}
+                                    className="rounded text-blue-500"
+                                  />
+                                  Sync future dates
+                                </label>
+                              </div>
+                              <textarea 
+                                value={editDescription}
+                                onChange={(e) => setEditDescription(e.target.value)}
+                                className="w-full p-3 border border-[#E5E5E5] rounded-xl text-xs bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[80px]"
+                              />
+                              <div className="flex justify-end gap-2 text-xs">
+                                <button 
+                                  onClick={cancelEditing}
+                                  className="px-4 py-2 font-bold text-[#999] hover:text-[#666]"
+                                >
+                                  Cancel
+                                </button>
+                                <button 
+                                  onClick={saveEntryUpdate}
+                                  disabled={isUpdatingEntry === entry.id}
+                                  className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  {isUpdatingEntry === entry.id ? "Saving..." : "Save Changes"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#999] flex items-center gap-1.5">
+                                    <Clock size={12} />
+                                    {new Date(entry.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                  </span>
+                                  {entry.type === TimelineEntryType.MANUAL && (
+                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold uppercase tracking-wider">
+                                      {entry.category || "General"}
+                                    </span>
+                                  )}
+                                  {!isPublicView && (
+                                    <button 
+                                      onClick={() => startEditing(entry)}
+                                      className="opacity-0 group-hover/item:opacity-100 transition-opacity text-[#999] hover:text-blue-600"
+                                    >
+                                      <Settings size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                                <span 
+                                  onClick={() => !isPublicView && cycleStatus(entry.id, entry.status)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-all ${
+                                    entry.status === TimelineEntryStatus.DONE ? "bg-green-100 text-green-700" : 
+                                    entry.status === TimelineEntryStatus.WAIT_FEEDBACK ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                                  } ${isPublicView ? "cursor-default" : "cursor-pointer hover:scale-105 active:scale-95"}`}
+                                >
+                                  {entry.status}
+                                </span>
+                              </div>
+                              <p className={`text-[#1A1A1A] leading-relaxed ${
+                                entry.status === TimelineEntryStatus.DONE ? "line-through text-[#999]" : ""
+                              }`}>
+                                {entry.description}
+                              </p>
+                            </>
+                          )}
                         </div>
-                        <p className={`text-[#1A1A1A] leading-relaxed ${
-                          entry.status === TimelineEntryStatus.DONE ? "line-through text-[#999]" : ""
-                        }`}>
-                          {entry.description}
-                        </p>
                       </div>
-                    </div>
                   </motion.div>
                 ))}
               </motion.div>
@@ -695,32 +849,89 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                           }`}
                         >
                           <td className="p-4">
-                            <div className="flex flex-col">
-                              <span className="text-xs font-bold text-[#1A1A1A]">
-                                {new Date(entry.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-                              </span>
-                              <span className="text-[10px] text-[#999] uppercase font-medium">
-                                {new Date(entry.date).toLocaleDateString(undefined, { weekday: 'short' })}
-                              </span>
-                            </div>
+                            {editingEntryId === entry.id ? (
+                              <div className="space-y-2">
+                                <input 
+                                  type="date"
+                                  value={editDate}
+                                  onChange={(e) => setEditDate(e.target.value)}
+                                  className="p-1 border border-[#E5E5E5] rounded text-[10px] bg-gray-50 w-full"
+                                />
+                                <label className="flex items-center gap-1 text-[8px] font-bold text-[#999] cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={isSyncingDates}
+                                    onChange={(e) => setIsSyncingDates(e.target.checked)}
+                                    className="rounded text-blue-500 scale-75"
+                                  />
+                                  Sync
+                                </label>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold text-[#1A1A1A]">
+                                  {new Date(entry.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                                </span>
+                                <span className="text-[10px] text-[#999] uppercase font-medium">
+                                  {new Date(entry.date).toLocaleDateString(undefined, { weekday: 'short' })}
+                                </span>
+                              </div>
+                            )}
                           </td>
                           <td className="p-4">
-                            <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-tight">
-                              {entry.category || "General"}
-                            </span>
+                            {entry.type === TimelineEntryType.MANUAL && (
+                              <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-tight">
+                                {entry.category || "General"}
+                              </span>
+                            )}
                           </td>
                           <td className="p-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                                entry.status === TimelineEntryStatus.DONE ? "bg-green-500" : 
-                                entry.status === TimelineEntryStatus.WAIT_FEEDBACK ? "bg-amber-400" : "bg-blue-500"
-                              }`} />
-                              <p className={`text-xs leading-relaxed ${
-                                entry.status === TimelineEntryStatus.DONE ? "text-[#999] line-through italic" : "text-[#1A1A1A] font-medium"
-                              }`}>
-                                {entry.description}
-                              </p>
-                            </div>
+                            {editingEntryId === entry.id ? (
+                              <div className="space-y-2">
+                                <textarea 
+                                  value={editDescription}
+                                  onChange={(e) => setEditDescription(e.target.value)}
+                                  className="w-full p-2 border border-[#E5E5E5] rounded text-[10px] bg-gray-50 focus:outline-none min-h-[60px]"
+                                />
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={saveEntryUpdate}
+                                    disabled={isUpdatingEntry === entry.id}
+                                    className="bg-blue-600 text-white px-3 py-1 rounded-md text-[10px] font-bold"
+                                  >
+                                    {isUpdatingEntry === entry.id ? "..." : "Save"}
+                                  </button>
+                                  <button 
+                                    onClick={cancelEditing}
+                                    className="text-[#999] text-[10px] font-bold"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                    entry.status === TimelineEntryStatus.DONE ? "bg-green-500" : 
+                                    entry.status === TimelineEntryStatus.WAIT_FEEDBACK ? "bg-amber-400" : "bg-blue-500"
+                                  }`} />
+                                  <p className={`text-xs leading-relaxed ${
+                                    entry.status === TimelineEntryStatus.DONE ? "text-[#999] line-through italic" : "text-[#1A1A1A] font-medium"
+                                  }`}>
+                                    {entry.description}
+                                  </p>
+                                </div>
+                                {!isPublicView && (
+                                  <button 
+                                    onClick={() => startEditing(entry)}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[#999] hover:text-blue-600"
+                                  >
+                                    <Settings size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="p-4">
                             <div className="flex justify-center">
@@ -893,6 +1104,32 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="mt-16 pt-12 border-t border-[#F0F0F0] lg:col-span-3 col-span-1 pb-12">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col items-center md:items-start gap-1">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-5 h-5 bg-[#1A1A1A] rounded flex items-center justify-center">
+                <span className="text-[8px] font-black text-white italic">DT</span>
+              </div>
+              <span className="text-xs font-black tracking-tight uppercase">Done Task</span>
+            </div>
+            <p className="text-[10px] text-[#999] font-medium italic">Crafting digital progress, one task at a time.</p>
+          </div>
+          
+          <div className="flex flex-col items-center md:items-end gap-2">
+            <div className="text-[9px] font-bold text-[#666] uppercase tracking-[0.3em] flex items-center gap-3">
+              <span>Bandung</span>
+              <span className="w-1 h-1 bg-[#E5E5E5] rounded-full" />
+              <span>Indonesia</span>
+            </div>
+            <p className="text-[9px] font-bold text-[#999] opacity-50 uppercase tracking-widest">
+              © 2026 Done Task Management System
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

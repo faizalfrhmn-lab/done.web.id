@@ -156,7 +156,7 @@ export default function App() {
           <Route path="/create" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
           
           {/* Public Route */}
-          <Route path="/t/:timelineId" element={<TimelinePage isPublicView={true} />} />
+          <Route path="/t/:slug" element={<TimelinePage isPublicView={true} />} />
           
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
