@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Invoice, InvoiceStatus, Timeline, TimelineEntry, TimelineEntryType, TimelineEntryStatus } from "../types";
+import { Invoice, InvoiceStatus, Timeline, TimelineEntry, TimelineEntryType, TimelineEntryStatus, TimelineFeedback } from "../types";
 
 export const api = {
   // Invoices
@@ -106,6 +106,7 @@ export const api = {
       agencyLogoUrl: timeline.agency_logo_url,
       invoiceId: timeline.invoice_id,
       isPublic: timeline.is_public,
+      password: timeline.password,
       entries: entries ? entries.map(e => ({
         ...e,
         timelineId: e.timeline_id
@@ -118,6 +119,7 @@ export const api = {
     if (updates.agencyName !== undefined) dbUpdates.agency_name = updates.agencyName;
     if (updates.projectName !== undefined) dbUpdates.project_name = updates.projectName;
     if (updates.agencyLogoUrl !== undefined) dbUpdates.agency_logo_url = updates.agencyLogoUrl;
+    if (updates.password !== undefined) dbUpdates.password = updates.password;
 
     const { data, error } = await supabase
       .from("timelines")
@@ -132,7 +134,8 @@ export const api = {
       ...data,
       agencyName: data.agency_name,
       projectName: data.project_name,
-      agencyLogoUrl: data.agency_logo_url
+      agencyLogoUrl: data.agency_logo_url,
+      password: data.password
     };
   },
 
@@ -195,5 +198,44 @@ export const api = {
     
     if (error) throw error;
     return { ...data, timelineId: data.timeline_id };
+  },
+
+  // Feedback
+  async addFeedback(timelineId: string, authorName: string, content: string): Promise<TimelineFeedback> {
+    const { data, error } = await supabase
+      .from("timeline_feedback")
+      .insert([{
+        id: `fb-${Date.now()}`,
+        timeline_id: timelineId,
+        author_name: authorName,
+        content,
+        created_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return {
+      ...data,
+      timelineId: data.timeline_id,
+      authorName: data.author_name,
+      createdAt: data.created_at
+    };
+  },
+
+  async getFeedback(timelineId: string): Promise<TimelineFeedback[]> {
+    const { data, error } = await supabase
+      .from("timeline_feedback")
+      .select("*")
+      .eq("timeline_id", timelineId)
+      .order("created_at", { ascending: false });
+    
+    if (error) throw error;
+    return (data || []).map(fb => ({
+      ...fb,
+      timelineId: fb.timeline_id,
+      authorName: fb.author_name,
+      createdAt: fb.created_at
+    }));
   }
 };

@@ -62,3 +62,11 @@ export interface Timeline {
   projectName?: string;
   agencyLogoUrl?: string;
 }
+
+export interface TimelineFeedback {
+  id: string;
+  timelineId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}

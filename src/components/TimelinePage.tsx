@@ -54,7 +54,7 @@ export default function TimelinePage({ isPublicView = false }: { isPublicView?: 
 
   if (!timeline) return <div className="p-12">Loading Timeline...</div>;
 
-  return (
+  const content = (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -161,4 +161,16 @@ export default function TimelinePage({ isPublicView = false }: { isPublicView?: 
       )}
     </div>
   );
+
+  if (isPublicView) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F5] py-12 px-6">
+        <div className="max-w-5xl mx-auto">
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return content;
 }
