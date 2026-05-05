@@ -14,6 +14,7 @@ import LoginPage from "./components/LoginPage";
 import { AuthProvider, useAuth } from "./components/AuthContext";
 import { Invoice, InvoiceStatus } from "./types";
 import { Plus, Clock, Loader2 } from "lucide-react";
+import { api } from "./lib/api";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -40,13 +41,15 @@ const Dashboard = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    fetch("/api/invoices")
-      .then(res => res.json())
+    api.getInvoices()
       .then(data => {
         setInvoices(Array.isArray(data) ? data : []);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error("Dashboard Fetch Error:", err);
+        setLoading(false);
+      });
   }, []);
 
   const totalBilled = invoices.reduce((sum, inv) => sum + inv.total, 0);

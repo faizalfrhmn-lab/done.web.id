@@ -4,6 +4,7 @@ import { Clock, Send, Sparkles, User, Calendar, Trash2, CheckCircle2, Circle } f
 import { motion, AnimatePresence } from "motion/react";
 import { generateTimelineEntries } from "../lib/gemini";
 import { TimelineEntryStatus } from "../types";
+import { api } from "../lib/api";
 
 export default function TimelineView({ timelineId, isPublicView = false }: { timelineId: string, isPublicView?: boolean }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
@@ -29,12 +30,7 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
 
   useEffect(() => {
     setError(null);
-    fetch(`/api/timelines/${timelineId}`)
-      .then(async res => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Timeline not found");
-        return data;
-      })
+    api.getTimeline(timelineId)
       .then(data => {
         setTimeline(data);
         setAgencyName(data.agencyName || "");
@@ -83,13 +79,13 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
   });
 
   const updateTimelineInfo = async () => {
-    const res = await fetch(`/api/timelines/${timelineId}/info`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agencyName, projectName, agencyLogoUrl }),
-    });
-    if (res.ok && timeline) {
-      setTimeline({ ...timeline, agencyName, projectName, agencyLogoUrl });
+    try {
+      const updated = await api.updateTimelineInfo(timelineId, { agencyName, projectName, agencyLogoUrl });
+      if (timeline) {
+        setTimeline({ ...timeline, ...updated });
+      }
+    } catch (err) {
+      console.error("Error updating timeline info:", err);
     }
   };
 
@@ -98,17 +94,16 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
       ? TimelineEntryStatus.ON_PROGRESS 
       : TimelineEntryStatus.DONE;
 
-    const res = await fetch(`/api/timelines/${timelineId}/entries/${entryId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-
-    if (res.ok && timeline) {
-      setTimeline({
-        ...timeline,
-        entries: timeline.entries.map(e => e.id === entryId ? { ...e, status: newStatus } : e)
-      });
+    try {
+      await api.updateEntryStatus(entryId, newStatus);
+      if (timeline) {
+        setTimeline({
+          ...timeline,
+          entries: timeline.entries.map(e => e.id === entryId ? { ...e, status: newStatus } : e)
+        });
+      }
+    } catch (err) {
+      console.error("Error toggling status:", err);
     }
   };
 
@@ -119,32 +114,30 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
       ? TimelineEntryStatus.WAIT_FEEDBACK 
       : TimelineEntryStatus.ON_PROGRESS;
 
-    const res = await fetch(`/api/timelines/${timelineId}/entries/${entryId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-
-    if (res.ok && timeline) {
-      setTimeline({
-        ...timeline,
-        entries: timeline.entries.map(e => e.id === entryId ? { ...e, status: newStatus } : e)
-      });
+    try {
+      await api.updateEntryStatus(entryId, newStatus);
+      if (timeline) {
+        setTimeline({
+          ...timeline,
+          entries: timeline.entries.map(e => e.id === entryId ? { ...e, status: newStatus } : e)
+        });
+      }
+    } catch (err) {
+      console.error("Error cycling status:", err);
     }
   };
 
   const addEntry = async (entry: Partial<TimelineEntry>) => {
-    const res = await fetch(`/api/timelines/${timelineId}/entries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    const newEntry = await res.json();
-    if (timeline) {
-      setTimeline({
-        ...timeline,
-        entries: [...timeline.entries, newEntry],
-      });
+    try {
+      const newEntry = await api.addSingleTimelineEntry(timelineId, entry);
+      if (timeline) {
+        setTimeline({
+          ...timeline,
+          entries: [...timeline.entries, newEntry],
+        });
+      }
+    } catch (err) {
+      console.error("Error adding entry:", err);
     }
   };
 
@@ -169,20 +162,16 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
         type: TimelineEntryType.AI
       }));
 
-      const res = await fetch(`/api/timelines/${timelineId}/entries/bulk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entries: formattedEntries }),
-      });
-
-      if (res.ok) {
-        const newEntries = await res.json();
+      try {
+        const newEntries = await api.addTimelineEntries(timelineId, formattedEntries);
         if (timeline) {
           setTimeline({
             ...timeline,
             entries: [...timeline.entries, ...newEntries],
           });
         }
+      } catch (err) {
+        console.error("Error adding bulk entries:", err);
       }
     }
     

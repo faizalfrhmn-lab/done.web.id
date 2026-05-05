@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Invoice, Timeline } from "../types";
 import TimelineComponent from "./Timeline";
 import { ChevronLeft, Info, Globe, Lock, Share2 } from "lucide-react";
+import { api } from "../lib/api";
 
 export default function TimelinePage({ isPublicView = false }: { isPublicView?: boolean }) {
   const { id, timelineId } = useParams();
@@ -13,37 +14,34 @@ export default function TimelinePage({ isPublicView = false }: { isPublicView?: 
 
   useEffect(() => {
     if (isPublicView && timelineId) {
-      fetch(`/api/timelines/${timelineId}`)
-        .then(res => res.json())
+      api.getTimeline(timelineId)
         .then(tData => {
           setTimeline(tData);
           setIsPublic(tData.isPublic);
-        });
+        })
+        .catch(err => console.error("Public Timeline Fetch Error:", err));
     } else if (id) {
-      fetch(`/api/invoices/${id}`)
-        .then(res => res.json())
+      api.getInvoice(id)
         .then(data => {
           setInvoice(data);
-          fetch(`/api/timelines/${data.timelineId}`)
-            .then(res => res.json())
-            .then(tData => {
-              setTimeline(tData);
-              setIsPublic(tData.isPublic);
-            });
-        });
+          return api.getTimeline(data.timelineId);
+        })
+        .then(tData => {
+          setTimeline(tData);
+          setIsPublic(tData.isPublic);
+        })
+        .catch(err => console.error("Timeline Page Fetch Error:", err));
     }
   }, [id, timelineId, isPublicView]);
 
   const toggleVisibility = async () => {
-    if (isPublicView) return;
+    if (isPublicView || !timeline) return;
     const newStatus = !isPublic;
-    const res = await fetch(`/api/timelines/${timeline?.id}/visibility`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isPublic: newStatus }),
-    });
-    if (res.ok) {
+    try {
+      await api.updateTimelineVisibility(timeline.id, newStatus);
       setIsPublic(newStatus);
+    } catch (err) {
+      console.error("Error updating visibility:", err);
     }
   };
 

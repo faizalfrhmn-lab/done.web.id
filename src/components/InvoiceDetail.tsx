@@ -3,6 +3,7 @@ import { useParams, Link, useLocation } from "react-router-dom";
 import { Invoice } from "../types";
 import TimelineView from "./Timeline";
 import { ChevronLeft, Download, Send, Clock, CreditCard, Sparkles } from "lucide-react";
+import { api } from "../lib/api";
 
 export default function InvoiceDetail() {
   const { id } = useParams();
@@ -16,12 +17,8 @@ export default function InvoiceDetail() {
 
   useEffect(() => {
     setError(null);
-    fetch(`/api/invoices/${id}`)
-      .then(async res => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Invoice not found");
-        return data;
-      })
+    if (!id) return;
+    api.getInvoice(id)
       .then(data => {
         setInvoice(data);
         setLoading(false);

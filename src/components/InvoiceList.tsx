@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Invoice, InvoiceStatus } from "../types";
 import { ChevronRight, Filter, Search, MoreHorizontal } from "lucide-react";
 import { motion } from "motion/react";
+import { api } from "../lib/api";
 
 export default function InvoiceList() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -10,14 +11,9 @@ export default function InvoiceList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/invoices")
-      .then(async res => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to fetch invoices");
-        return data;
-      })
+    api.getInvoices()
       .then(data => {
-        setInvoices(Array.isArray(data) ? data : []);
+        setInvoices(data);
         setLoading(false);
       })
       .catch(err => {

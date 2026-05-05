@@ -134,13 +134,6 @@ export default function LoginPage() {
               {isSignUp ? "Sign In" : "Sign Up"}
             </button>
           </p>
-          {!isSignUp && (
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg text-blue-800 text-xs text-left">
-              <p className="font-bold mb-1">Super Admin Login:</p>
-              <p>Email: faizalfr07@gmail.com</p>
-              <p>Pass: 040421done</p>
-            </div>
-          )}
         </div>
       </motion.div>
     </div>

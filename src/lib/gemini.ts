@@ -1,9 +1,21 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+    if (!apiKey) {
+      throw new Error("An API Key must be set (VITE_GEMINI_API_KEY or process.env.GEMINI_API_KEY)");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 export async function generateTimelineEntries(prompt: string, startDate?: string, dayOffs?: string[]) {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `You are an expert Project Manager assistant. Convert the provided schedule into a structured JSON list of events.

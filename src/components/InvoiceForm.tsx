@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { InvoiceStatus, InvoiceItem } from "../types";
 import { Plus, Trash2, Save, X } from "lucide-react";
 import { motion } from "motion/react";
+import { api } from "../lib/api";
 
 export default function InvoiceForm() {
   const navigate = useNavigate();
@@ -56,20 +57,10 @@ export default function InvoiceForm() {
         status: InvoiceStatus.DRAFT
       };
 
-      const res = await fetch("/api/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newInvoice),
-      });
-
-      if (res.ok) {
-        navigate("/invoices");
-      } else {
-        const data = await res.json();
-        setError(data.error || "Failed to save invoice. Please check if your Supabase tables are set up correctly.");
-      }
-    } catch (err) {
-      setError("A network error occurred. Please try again.");
+      await api.createInvoice(newInvoice);
+      navigate("/invoices");
+    } catch (err: any) {
+      setError(err.message || "A network error occurred. Please try again.");
     } finally {
       setIsSaving(false);
     }
