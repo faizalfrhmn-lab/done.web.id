@@ -2,8 +2,9 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
-import { InvoiceStatus, TimelineEntryType, TimelineEntryStatus } from "./src/types";
+import { InvoiceStatus, TimelineEntryType, TimelineEntryStatus } from "./src/types.ts";
 import "dotenv/config";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,13 +22,28 @@ async function startServer() {
 
   console.log("--- Supabase Diagnostics ---");
   console.log("URL:", supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : "Missing");
-  console.log("Key Type:", process.env.SUPABASE_SERVICE_ROLE_KEY ? "SERVICE_ROLE" : "ANON");
   
-  if (!supabaseUrl || !supabaseKey) {
-    console.error("Supabase config invalid!");
+  // Initialize Supabase only if URl is valid to prevent library crash
+  let supabase: any;
+  if (supabaseUrl && supabaseKey && supabaseUrl.startsWith("http")) {
+    supabase = createClient(supabaseUrl, supabaseKey);
+  } else {
+    console.error("Supabase config invalid or missing URL/Key!");
+    // Create a dummy object that returns helpful errors instead of crashing
+    const dummyHandler = {
+      get: (target: any, prop: string) => {
+        if (prop === 'from') {
+          return () => ({
+            select: () => ({ order: () => ({ timeout: () => Promise.resolve({ data: [], error: { message: "Supabase not configured" } }) }), single: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }), eq: () => ({ single: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }) }) }),
+            insert: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }),
+            update: () => ({ eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }) }) }) })
+          });
+        }
+        return () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } });
+      }
+    };
+    supabase = new Proxy({}, dummyHandler);
   }
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
 
   // Request logger middleware
   app.use((req, res, next) => {
@@ -37,6 +53,15 @@ async function startServer() {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
     });
     next();
+  });
+
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      supabase: !!supabaseUrl && !!supabaseKey,
+      env: process.env.NODE_ENV
+    });
   });
 
   // API Routes
@@ -310,7 +335,7 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -318,13 +343,34 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    const indexPath = path.join(distPath, 'index.html');
+    
+    app.use(express.static(distPath, {
+      index: false,
+      redirect: false
+    }));
+
+    // Help debug asset 404s
+    app.get('/assets/*', (req, res, next) => {
+      const assetPath = path.join(distPath, req.url);
+      if (!fs.existsSync(assetPath)) {
+        console.error(`[Production] Asset 404: ${req.url} (Checked: ${assetPath})`);
+      }
+      next();
+    });
+    
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      console.log(`[Production] Serving request for: ${req.url}`);
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        console.error(`Index not found at: ${indexPath}`);
+        res.status(500).send(`Build production files not found. Search path: ${distPath}`);
+      }
     });
   }
 
-  if (process.env.NODE_ENV !== "test") {
+  if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
@@ -333,4 +379,8 @@ async function startServer() {
   return app;
 }
 
-export default startServer();
+const appPromise = startServer();
+export default async (req: any, res: any) => {
+  const app = await appPromise;
+  return app(req, res);
+};
