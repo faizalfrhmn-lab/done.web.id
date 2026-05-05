@@ -44,9 +44,6 @@ export default function InvoiceForm() {
     setIsSaving(true);
     setError(null);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
       const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
       const newInvoice = {
         invoiceNumber,
@@ -63,25 +60,16 @@ export default function InvoiceForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newInvoice),
-        signal: controller.signal
       });
 
-      clearTimeout(timeoutId);
-
       if (res.ok) {
-        // Pre-fetch invoices in the background if possible or just navigate
         navigate("/invoices");
       } else {
         const data = await res.json();
         setError(data.error || "Failed to save invoice. Please check if your Supabase tables are set up correctly.");
       }
-    } catch (err: any) {
-      console.error("Save Error:", err);
-      if (err.name === 'AbortError') {
-        setError("Connection timeout: Server is taking too long to respond. Please try again.");
-      } else {
-        setError("A network error occurred. Please check your internet or database connection.");
-      }
+    } catch (err) {
+      setError("A network error occurred. Please try again.");
     } finally {
       setIsSaving(false);
     }

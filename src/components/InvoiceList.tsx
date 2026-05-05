@@ -36,26 +36,9 @@ export default function InvoiceList() {
   };
 
   if (loading) return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <header className="flex items-end justify-between">
-        <div className="space-y-3">
-          <div className="h-8 w-48 bg-gray-200 rounded-lg animate-pulse" />
-          <div className="h-4 w-64 bg-gray-100 rounded-lg animate-pulse" />
-        </div>
-      </header>
-      <div className="bg-white border border-[#E5E5E5] rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-8 space-y-6">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="flex justify-between items-center py-4 border-b border-gray-50 last:border-0 grow">
-              <div className="space-y-2">
-                <div className="h-4 w-32 bg-gray-100 rounded animate-pulse" />
-                <div className="h-3 w-48 bg-gray-50 rounded animate-pulse" />
-              </div>
-              <div className="h-8 w-16 bg-gray-100 rounded-full animate-pulse" />
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="flex flex-col items-center justify-center p-12 space-y-4">
+      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <p className="text-sm font-medium text-[#666]">Syncing with Supabase...</p>
     </div>
   );
 
@@ -109,16 +92,6 @@ export default function InvoiceList() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5E5]">
-              {invoices.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-[#999]">
-                    <div className="flex flex-col items-center gap-2">
-                      <p className="font-medium italic">No invoices found in your console.</p>
-                      <Link to="/invoices/new" className="text-blue-600 hover:underline text-sm font-bold uppercase transition-all">Create your first invoice</Link>
-                    </div>
-                  </td>
-                </tr>
-              )}
               {invoices.map((invoice, index) => (
                 <motion.tr 
                   initial={{ opacity: 0, y: 10 }}

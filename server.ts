@@ -2,7 +2,6 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 import { InvoiceStatus, TimelineEntryType, TimelineEntryStatus } from "./src/types.ts";
 import "dotenv/config";
@@ -12,103 +11,33 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
   app.use(express.json());
 
   // Supabase Setup
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
+  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || "";
 
-  console.log("--- Supabase Diagnostics ---");
-  console.log("URL:", supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : "Missing");
-  
-  // Initialize Supabase only if URl is valid to prevent library crash
-  let supabase: any;
-  if (supabaseUrl && supabaseKey && supabaseUrl.startsWith("http")) {
-    supabase = createClient(supabaseUrl, supabaseKey);
-  } else {
-    console.error("Supabase config invalid or missing URL/Key!");
-    // Create a dummy object that returns helpful errors instead of crashing
-    const dummyHandler = {
-      get: (target: any, prop: string) => {
-        if (prop === 'from') {
-          return () => ({
-            select: () => ({ order: () => ({ timeout: () => Promise.resolve({ data: [], error: { message: "Supabase not configured" } }) }), single: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }), eq: () => ({ single: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }) }) }),
-            insert: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }),
-            update: () => ({ eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } }) }) }) })
-          });
-        }
-        return () => Promise.resolve({ data: null, error: { message: "Supabase not configured" } });
-      }
-    };
-    supabase = new Proxy({}, dummyHandler);
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("CRITICAL: Supabase URL or Key missing from environment variables.");
   }
 
-  // Request logger middleware
-  app.use((req, res, next) => {
-    const start = Date.now();
-    res.on('finish', () => {
-      const duration = Date.now() - start;
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
-    });
-    next();
-  });
-
-  // Health check
-  app.get("/api/health", (req, res) => {
-    res.json({ 
-      status: "ok", 
-      supabase: !!supabaseUrl && !!supabaseKey,
-      env: process.env.NODE_ENV
-    });
-  });
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   // API Routes
-  app.get("/api/debug/supabase", async (req, res) => {
-    try {
-      const { data, error } = await supabase.from("invoices").select("*", { count: 'exact', head: true }).limit(1);
-      res.json({
-        connection: error ? "Error" : "Success",
-        error: error || null,
-        url_preview: supabaseUrl ? `${supabaseUrl.substring(0, 15)}...` : null,
-        timestamp: new Date().toISOString()
-      });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  app.post("/api/waitlist", async (req, res) => {
-    try {
-      const { email } = req.body;
-      
-      const { error } = await supabase.from("waitlist").insert([{ email, created_at: new Date().toISOString() }]);
-      if (error && error.code !== '23505') {
-        console.error("Waitlist Error:", error);
-      }
-      
-      res.json({ success: true, message: "Maaf, antrean saat ini sudah penuh. Kami akan mengabari Anda jika slot baru tersedia." });
-    } catch (err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
   app.get("/api/invoices", async (req, res) => {
-    console.log("Fetching invoices...");
     try {
       const { data, error } = await supabase
         .from("invoices")
         .select("*")
-        .order("created_at", { ascending: false })
-        .timeout(10000); // 10s timeout
+        .order("created_at", { ascending: false });
       
       if (error) {
-        console.error("Supabase Error (List Invoices):", error.message, error.details, error.hint);
-        return res.status(500).json({ error: `Database Error: ${error.message}` });
+        console.error("Supabase Error (List Invoices):", error);
+        return res.status(500).json({ error: `Database Error: ${error.message}. Make sure your 'invoices' table exists.` });
       }
       
-      console.log(`Found ${data?.length || 0} invoices.`);
       const invoices = (data || []).map(inv => ({
         ...inv,
         invoiceNumber: inv.invoice_number,
@@ -121,7 +50,7 @@ async function startServer() {
       
       res.json(invoices);
     } catch (err) {
-      console.error("Unexpected Error (GET Invoices):", err);
+      console.error("Unexpected Error:", err);
       res.status(500).json({ error: "An unexpected error occurred." });
     }
   });
@@ -156,12 +85,9 @@ async function startServer() {
 
   app.post("/api/invoices", async (req, res) => {
     try {
-      const { randomUUID } = await import('node:crypto');
-      const id = randomUUID();
-      const timelineId = randomUUID();
+      const id = `inv-${Date.now()}`;
+      const timelineId = `tl-${Date.now()}`;
       
-      console.log(`Creating invoice ${req.body.invoiceNumber} with ID ${id}`);
-
       const newInvoice = {
         id,
         invoice_number: req.body.invoiceNumber,
@@ -173,30 +99,35 @@ async function startServer() {
         total: req.body.total,
         status: req.body.status,
         timeline_id: timelineId,
-        is_private: true,
-        created_at: new Date().toISOString()
+        is_private: true
       };
+
+      const { error: invError } = await supabase.from("invoices").insert([newInvoice]);
+      if (invError) {
+        console.error("FULL INVOICE ERROR:", JSON.stringify(invError, null, 2));
+        return res.status(500).json({ 
+          error: `Failed to create invoice: ${invError.message}`,
+          details: invError.details,
+          hint: invError.hint 
+        });
+      }
 
       const newTimeline = {
         id: timelineId,
         invoice_id: id,
         is_public: false,
         agency_name: "My Agency",
-        project_name: "New Project",
-        created_at: new Date().toISOString()
+        project_name: "New Project"
       };
-
-      // Sequential insert for better error control
-      const { error: invError } = await supabase.from("invoices").insert([newInvoice]);
-      if (invError) {
-        console.error("INVOICE INSERT ERROR:", invError);
-        return res.status(500).json({ error: `Invoice Save Error: ${invError.message}` });
-      }
 
       const { error: tlError } = await supabase.from("timelines").insert([newTimeline]);
       if (tlError) {
-        console.error("TIMELINE INSERT ERROR:", tlError);
-        return res.status(500).json({ error: `Timeline Save Error: ${tlError.message}` });
+        console.error("FULL TIMELINE ERROR:", JSON.stringify(tlError, null, 2));
+        return res.status(500).json({ 
+          error: `Failed to create timeline: ${tlError.message}`,
+          details: tlError.details,
+          hint: tlError.hint
+        });
       }
 
       res.status(201).json({
@@ -204,9 +135,9 @@ async function startServer() {
         invoiceNumber: newInvoice.invoice_number,
         timelineId: newInvoice.timeline_id
       });
-    } catch (err: any) {
+    } catch (err) {
       console.error("POST Invoice Error:", err);
-      res.status(500).json({ error: `Server Error: ${err.message}` });
+      res.status(500).json({ error: "Internal server error during invoice creation." });
     }
   });
 
@@ -282,9 +213,8 @@ async function startServer() {
   });
 
   app.post("/api/timelines/:id/entries/bulk", async (req, res) => {
-    const { randomUUID } = await import('node:crypto');
-    const entriesToInsert = req.body.entries.map((entry: any) => ({
-      id: randomUUID(),
+    const entriesToInsert = req.body.entries.map((entry: any, index: number) => ({
+      id: `e-${Date.now()}-${index}`,
       timeline_id: req.params.id,
       date: entry.date || new Date().toISOString(),
       description: entry.description,
@@ -301,25 +231,20 @@ async function startServer() {
   });
 
   app.post("/api/timelines/:id/entries", async (req, res) => {
-    try {
-      const { randomUUID } = await import('node:crypto');
-      const newEntryPayload = {
-        id: randomUUID(),
-        timeline_id: req.params.id,
-        date: req.body.date || new Date().toISOString(),
-        status: req.body.status || TimelineEntryStatus.ON_PROGRESS,
-        category: req.body.category || "General",
-        description: req.body.description,
-        type: req.body.type || TimelineEntryType.MANUAL
-      };
+    const newEntryPayload = {
+      id: `e-${Date.now()}`,
+      timeline_id: req.params.id,
+      date: req.body.date || new Date().toISOString(),
+      status: req.body.status || TimelineEntryStatus.ON_PROGRESS,
+      category: req.body.category || "General",
+      description: req.body.description,
+      type: req.body.type || TimelineEntryType.MANUAL
+    };
 
-      const { data, error } = await supabase.from("timeline_entries").insert([newEntryPayload]).select().single();
-      if (error) return res.status(500).json({ error: error.message });
-      
-      res.status(201).json({ ...data, timelineId: data.timeline_id });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+    const { data, error } = await supabase.from("timeline_entries").insert([newEntryPayload]).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    
+    res.status(201).json({ ...data, timelineId: data.timeline_id });
   });
 
   app.patch("/api/timelines/:id/entries/:entryId", async (req, res) => {
@@ -335,7 +260,7 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -343,44 +268,15 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    const indexPath = path.join(distPath, 'index.html');
-    
-    app.use(express.static(distPath, {
-      index: false,
-      redirect: false
-    }));
-
-    // Help debug asset 404s
-    app.get('/assets/*', (req, res, next) => {
-      const assetPath = path.join(distPath, req.url);
-      if (!fs.existsSync(assetPath)) {
-        console.error(`[Production] Asset 404: ${req.url} (Checked: ${assetPath})`);
-      }
-      next();
-    });
-    
+    app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      console.log(`[Production] Serving request for: ${req.url}`);
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        console.error(`Index not found at: ${indexPath}`);
-        res.status(500).send(`Build production files not found. Search path: ${distPath}`);
-      }
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
-  
-  return app;
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
-const appPromise = startServer();
-export default async (req: any, res: any) => {
-  const app = await appPromise;
-  return app(req, res);
-};
+startServer();

@@ -266,7 +266,7 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                 className="space-y-8"
               >
                 {timeline.entries.length === 0 && (
-                  <p className="text-[#999]">No events recorded yet.</p>
+                  <p className="text-[#999] italic">No events recorded yet.</p>
                 )}
                 {sortedEntries.map((entry, idx) => (
                   <motion.div
@@ -369,7 +369,7 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                                 entry.status === TimelineEntryStatus.WAIT_FEEDBACK ? "bg-amber-400" : "bg-blue-500"
                               }`} />
                               <p className={`text-xs leading-relaxed ${
-                                entry.status === TimelineEntryStatus.DONE ? "text-[#999] line-through" : "text-[#1A1A1A] font-medium"
+                                entry.status === TimelineEntryStatus.DONE ? "text-[#999] line-through italic" : "text-[#1A1A1A] font-medium"
                               }`}>
                                 {entry.description}
                               </p>
@@ -393,7 +393,7 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                       ))}
                       {timeline.entries.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="p-12 text-center text-[#999] text-xs">
+                          <td colSpan={4} className="p-12 text-center text-[#999] text-xs italic">
                             No entries found for this project yet.
                           </td>
                         </tr>
