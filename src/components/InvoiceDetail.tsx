@@ -114,8 +114,8 @@ export default function InvoiceDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F5F5F5]">
-                {invoice.items.map(item => (
-                  <tr key={item.id}>
+                {invoice.items.map((item, idx) => (
+                  <tr key={`${item.id}-${idx}`}>
                     <td className="py-6 text-sm font-medium">{item.description}</td>
                     <td className="py-6 px-4 text-right text-sm">{item.quantity}</td>
                     <td className="py-6 px-4 text-right text-sm font-mono">${item.unitPrice.toLocaleString()}</td>

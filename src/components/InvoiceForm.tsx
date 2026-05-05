@@ -114,8 +114,8 @@ export default function InvoiceForm() {
           <div className="pt-6 space-y-4">
             <label className="text-[11px] font-bold text-[#999] uppercase tracking-wider">Invoice Items</label>
             <div className="space-y-3">
-              {items.map((item) => (
-                <div key={item.id} className="flex gap-4 items-end animate-in fade-in slide-in-from-top-2">
+              {items.map((item, idx) => (
+                <div key={`${item.id}-${idx}`} className="flex gap-4 items-end animate-in fade-in slide-in-from-top-2">
                   <div className="flex-1 space-y-1">
                     <input 
                       required

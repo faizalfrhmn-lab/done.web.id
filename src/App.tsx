@@ -122,8 +122,8 @@ const Dashboard = () => {
             ) : invoices.length === 0 ? (
               <div className="p-8 text-center text-sm text-gray-500">No recent activity</div>
             ) : (
-              invoices.slice(0, 3).map(inv => (
-                <Link key={inv.id} to={`/invoices/${inv.id}`} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+              invoices.slice(0, 3).map((inv, idx) => (
+                <Link key={`${inv.id}-${idx}`} to={`/invoices/${inv.id}`} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
                   <div>
                     <p className="text-sm font-medium">{inv.clientName}</p>
                     <p className="text-xs text-gray-500">{inv.invoiceNumber}</p>

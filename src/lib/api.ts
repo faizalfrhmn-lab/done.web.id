@@ -280,12 +280,24 @@ export const api = {
     } as TimelineEntry;
   },
 
-  async deleteFeedback(feedbackId: string) {
+  async deleteTimelineEntry(entryId: string) {
     const { error } = await supabase
+      .from("timeline_entries")
+      .delete()
+      .eq("id", entryId);
+    if (error) throw error;
+  },
+
+  async deleteFeedback(feedbackId: string) {
+    const { data, error } = await supabase
       .from("timeline_feedback")
       .delete()
-      .eq("id", feedbackId);
+      .eq("id", feedbackId)
+      .select();
     
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(`Failed to delete feedback: No record found with id ${feedbackId}`);
+    }
   },
 };

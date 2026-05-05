@@ -93,7 +93,7 @@ export default function InvoiceList() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  key={invoice.id} 
+                  key={`${invoice.id}-${index}`} 
                   className="hover:bg-gray-50/50 transition-colors group cursor-pointer"
                 >
                   <td className="px-6 py-6 border-b border-[#F5F5F5]">

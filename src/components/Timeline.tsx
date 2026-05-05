@@ -86,16 +86,43 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
     }
   };
 
-  const deleteFeedback = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this feedback?")) return;
+  const deleteFeedback = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this feedback?")) return;
     setIsDeletingFeedback(id);
     try {
       await api.deleteFeedback(id);
       setFeedbacks(prev => prev.filter(fb => fb.id !== id));
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error deleting feedback:", err);
+      // If it's already gone, just update local state
+      if (err.message?.includes("No record found")) {
+        setFeedbacks(prev => prev.filter(fb => fb.id !== id));
+      } else {
+        alert(err.message || "Failed to delete feedback. Please check your connection.");
+        // Refresh feedbacks just in case
+        api.getFeedback(timelineId).then(setFeedbacks);
+      }
     } finally {
       setIsDeletingFeedback(null);
+    }
+  };
+
+  const deleteEntry = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this entry?")) return;
+    try {
+      await api.deleteTimelineEntry(id);
+      setTimeline(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          entries: prev.entries.filter(e => e.id !== id)
+        };
+      });
+    } catch (err) {
+      console.error("Error deleting entry:", err);
+      alert("Failed to delete entry. You might not have permission.");
     }
   };
 
@@ -511,8 +538,8 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {authorizedClients.map(client => (
-                      <span key={client} className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold border border-blue-100 animate-in fade-in zoom-in duration-200">
+                    {authorizedClients.map((client, idx) => (
+                      <span key={`${client}-${idx}`} className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold border border-blue-100 animate-in fade-in zoom-in duration-200">
                         {client}
                         <button onClick={() => removeAuthorizedClient(client)} className="hover:text-red-500 transition-colors">
                           <Plus size={12} className="rotate-45" />
@@ -664,8 +691,8 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                   {feedbacks.length === 0 ? (
                     <p className="text-center text-[#999] text-xs italic py-4">No feedback yet. Be the first to shout!</p>
                   ) : (
-                    feedbacks.map((fb) => (
-                      <div key={fb.id} className="p-3 bg-gray-50 rounded-xl border border-[#F0F0F0] space-y-1">
+                    feedbacks.map((fb, idx) => (
+                      <div key={`${fb.id}-${idx}`} className="p-3 bg-gray-50 rounded-xl border border-[#F0F0F0] space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-amber-600">{fb.authorName}</span>
                           <div className="flex items-center gap-2">
@@ -674,11 +701,12 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                             </span>
                             {!isPublicView && (
                               <button 
-                                onClick={() => deleteFeedback(fb.id)}
+                                onClick={(e) => deleteFeedback(fb.id, e)}
                                 disabled={isDeletingFeedback === fb.id}
-                                className="text-[#999] hover:text-red-500 transition-colors disabled:opacity-50"
+                                className="p-1.5 text-[#999] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
+                                title="Delete Feedback"
                               >
-                                <Trash2 size={12} />
+                                <Trash2 size={14} />
                               </button>
                             )}
                           </div>
@@ -712,7 +740,7 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                 )}
                 {sortedEntries.map((entry, idx) => (
                   <motion.div
-                    key={entry.id}
+                    key={`${entry.id}-${idx}`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}
@@ -792,12 +820,22 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                                     </span>
                                   )}
                                   {!isPublicView && (
-                                    <button 
-                                      onClick={() => startEditing(entry)}
-                                      className="opacity-0 group-hover/item:opacity-100 transition-opacity text-[#999] hover:text-blue-600"
-                                    >
-                                      <Settings size={12} />
-                                    </button>
+                                    <div className="flex items-center gap-1 sm:opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                      <button 
+                                        onClick={() => startEditing(entry)}
+                                        className="p-1.5 text-[#999] hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                        title="Edit Entry"
+                                      >
+                                        <Settings size={14} />
+                                      </button>
+                                      <button 
+                                        onClick={(e) => deleteEntry(entry.id, e)}
+                                        className="p-1.5 text-[#999] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                        title="Delete Entry"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                                 <span 
@@ -841,9 +879,9 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F0F0F0]">
-                      {sortedEntries.map((entry) => (
+                      {sortedEntries.map((entry, idx) => (
                         <tr 
-                          key={entry.id} 
+                          key={`${entry.id}-${idx}`} 
                           className={`group hover:bg-gray-50/50 transition-colors ${
                             entry.status === TimelineEntryStatus.DONE ? "bg-gray-50/30" : ""
                           }`}
@@ -923,12 +961,22 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                                   </p>
                                 </div>
                                 {!isPublicView && (
-                                  <button 
-                                    onClick={() => startEditing(entry)}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[#999] hover:text-blue-600"
-                                  >
-                                    <Settings size={12} />
-                                  </button>
+                                  <div className="flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                      onClick={() => startEditing(entry)}
+                                      className="p-1.5 text-[#999] hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                      title="Edit Entry"
+                                    >
+                                      <Settings size={14} />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => deleteEntry(entry.id, e)}
+                                      className="p-1.5 text-[#999] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                      title="Delete Entry"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -1055,9 +1103,9 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                   <div className="space-y-2">
                     <span className="text-[10px] text-[#999]">Days Off</span>
                     <div className="flex flex-wrap gap-1">
-                      {DAYS.map(day => (
+                      {DAYS.map((day, idx) => (
                         <button
-                          key={day}
+                          key={`${day}-${idx}`}
                           type="button"
                           onClick={() => toggleDayOff(day)}
                           className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
