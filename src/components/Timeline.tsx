@@ -1109,10 +1109,12 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
       <footer className="mt-16 pt-12 border-t border-[#F0F0F0] lg:col-span-3 col-span-1 pb-12">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex flex-col items-center md:items-start gap-1">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-5 h-5 bg-[#1A1A1A] rounded flex items-center justify-center">
-                <span className="text-[8px] font-black text-white italic">DT</span>
-              </div>
+            <div className="flex items-center gap-3 mb-1">
+              <img 
+                src="https://twuzynjcjourdhgscopt.supabase.co/storage/v1/object/public/asset/logo%20done.png" 
+                alt="Done Task Logo" 
+                className="h-6 w-auto object-contain brightness-0" 
+              />
               <span className="text-xs font-black tracking-tight uppercase">Done Task</span>
             </div>
             <p className="text-[10px] text-[#999] font-medium italic">Crafting digital progress, one task at a time.</p>
