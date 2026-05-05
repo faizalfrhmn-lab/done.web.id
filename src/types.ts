@@ -61,6 +61,8 @@ export interface Timeline {
   agencyName?: string;
   projectName?: string;
   agencyLogoUrl?: string;
+  password?: string;
+  authorizedClients?: string[];
 }
 
 export interface TimelineFeedback {

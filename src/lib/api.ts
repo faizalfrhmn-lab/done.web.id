@@ -107,6 +107,7 @@ export const api = {
       invoiceId: timeline.invoice_id,
       isPublic: timeline.is_public,
       password: timeline.password,
+      authorizedClients: timeline.authorized_clients,
       entries: entries ? entries.map(e => ({
         ...e,
         timelineId: e.timeline_id
@@ -120,6 +121,7 @@ export const api = {
     if (updates.projectName !== undefined) dbUpdates.project_name = updates.projectName;
     if (updates.agencyLogoUrl !== undefined) dbUpdates.agency_logo_url = updates.agencyLogoUrl;
     if (updates.password !== undefined) dbUpdates.password = updates.password;
+    if (updates.authorizedClients !== undefined) dbUpdates.authorized_clients = updates.authorizedClients;
 
     const { data, error } = await supabase
       .from("timelines")
@@ -135,7 +137,8 @@ export const api = {
       agencyName: data.agency_name,
       projectName: data.project_name,
       agencyLogoUrl: data.agency_logo_url,
-      password: data.password
+      password: data.password,
+      authorizedClients: data.authorized_clients
     };
   },
 

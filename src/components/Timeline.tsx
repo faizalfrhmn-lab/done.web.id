@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Timeline, TimelineEntry, TimelineEntryType, TimelineFeedback } from "../types";
-import { Clock, Send, Sparkles, User, Calendar, Trash2, CheckCircle2, Circle, MessageSquare, Plus, Settings } from "lucide-react";
+import { Clock, Send, Sparkles, User, Calendar, Trash2, CheckCircle2, Circle, MessageSquare, Plus, Settings, Eye, EyeOff } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { generateTimelineEntries } from "../lib/gemini";
 import { TimelineEntryStatus } from "../types";
@@ -16,10 +16,18 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
   const [showSettings, setShowSettings] = useState(false);
   const [feedbackPassword, setFeedbackPassword] = useState("");
   const [isFeedbackAuthed, setIsFeedbackAuthed] = useState(false);
+  const [feedbackEmail, setFeedbackEmail] = useState("");
+  const [isTimelineAuthed, setIsTimelineAuthed] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [showTimelinePassword, setShowTimelinePassword] = useState(false);
   const [agencyName, setAgencyName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [agencyLogoUrl, setAgencyLogoUrl] = useState("");
   const [timelinePassword, setTimelinePassword] = useState("");
+  const [authorizedClients, setAuthorizedClients] = useState<string[]>([]);
+  const [newClientName, setNewClientName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [manualDescription, setManualDescription] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
@@ -46,6 +54,7 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
         setProjectName(data.projectName || "");
         setAgencyLogoUrl(data.agencyLogoUrl || "");
         setTimelinePassword(data.password || "");
+        setAuthorizedClients(data.authorizedClients || []);
       })
       .catch(err => {
         setError(err.message);
@@ -110,26 +119,57 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
   });
 
   const updateTimelineInfo = async () => {
+    setIsSavingSettings(true);
+    setSaveError(null);
     try {
       const updated = await api.updateTimelineInfo(timelineId, { 
         agencyName, 
         projectName, 
         agencyLogoUrl,
-        password: timelinePassword 
+        password: timelinePassword,
+        authorizedClients
       });
       if (timeline) {
         setTimeline({ ...timeline, ...updated });
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error updating timeline info:", err);
+      setSaveError(err?.message || "Failed to save settings. Please check your connection.");
+    } finally {
+      setIsSavingSettings(false);
     }
   };
 
-  const handleFeedbackLogin = (e: React.FormEvent) => {
+  const addAuthorizedClient = () => {
+    if (!newClientName.trim()) return;
+    if (authorizedClients.includes(newClientName.trim())) return;
+    setAuthorizedClients(prev => [...prev, newClientName.trim()]);
+    setNewClientName("");
+  };
+
+  const removeAuthorizedClient = (client: string) => {
+    setAuthorizedClients(prev => prev.filter(c => c !== client));
+  };
+
+  const handleTimelineLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!feedbackEmail.trim() || !feedbackEmail.includes("@")) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    if (authorizedClients.length > 0 && !authorizedClients.includes(feedbackName.trim())) {
+      setError("Your name is not on the authorized list for this project.");
+      return;
+    }
+
     if (timeline?.password && feedbackPassword === timeline.password) {
-      setIsFeedbackAuthed(true);
+      setIsTimelineAuthed(true);
       setError(null);
+      // Store the name for feedback
+      setFeedbackName(feedbackName);
     } else {
       setError("Invalid project password");
     }
@@ -245,6 +285,80 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
     </div>
   );
 
+  if (isPublicView && timeline?.password && !isTimelineAuthed) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center p-6">
+        <div className="bg-white p-8 rounded-3xl border border-[#E5E5E5] shadow-xl max-w-md w-full animate-in fade-in zoom-in duration-300">
+          <div className="text-center mb-8">
+            {timeline.agencyLogoUrl && (
+              <img src={timeline.agencyLogoUrl} alt="Logo" className="h-10 mx-auto mb-4 object-contain" />
+            )}
+            <h2 className="text-xl font-black tracking-tight mb-2">Restricted Access</h2>
+            <p className="text-xs text-[#666] font-medium uppercase tracking-wider">Project: {timeline.projectName || "Development"}</p>
+          </div>
+
+          <form onSubmit={handleTimelineLogin} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-[#999] uppercase tracking-widest">Your Full Name</label>
+              <input 
+                type="text"
+                required
+                value={feedbackName}
+                onChange={(e) => setFeedbackName(e.target.value)}
+                placeholder="Name"
+                className="w-full p-3 bg-gray-50 border border-[#E5E5E5] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-[#999] uppercase tracking-widest">Email Address</label>
+              <input 
+                type="email"
+                required
+                value={feedbackEmail}
+                onChange={(e) => setFeedbackEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full p-3 bg-gray-50 border border-[#E5E5E5] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-[#999] uppercase tracking-widest">Project Password</label>
+              <div className="relative">
+                <input 
+                  type={showTimelinePassword ? "text" : "password"}
+                  required
+                  value={feedbackPassword}
+                  onChange={(e) => setFeedbackPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full p-3 pr-10 bg-gray-50 border border-[#E5E5E5] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowTimelinePassword(!showTimelinePassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#999] hover:text-blue-600 transition-colors"
+                >
+                  {showTimelinePassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            
+            {error && (
+              <div className="p-3 bg-red-50 rounded-lg text-[10px] text-red-500 font-bold border border-red-100 italic">
+                {error}
+              </div>
+            )}
+
+            <button 
+              type="submit"
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/10 active:scale-[0.98]"
+            >
+              Unlock Timeline
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`grid grid-cols-1 ${isPublicView ? "" : "lg:grid-cols-3"} gap-8`}>
       {/* Entries List */}
@@ -322,9 +436,8 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                     type="text"
                     value={agencyName}
                     onChange={(e) => setAgencyName(e.target.value)}
-                    onBlur={updateTimelineInfo}
                     placeholder="Your Agency Name"
-                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium text-[#1A1A1A] focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
                 <div className="space-y-2">
@@ -333,9 +446,8 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                     type="text"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
-                    onBlur={updateTimelineInfo}
                     placeholder="e.g. Website Development"
-                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium text-[#1A1A1A] focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
                 <div className="space-y-2">
@@ -344,21 +456,102 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                     type="text"
                     value={agencyLogoUrl}
                     onChange={(e) => setAgencyLogoUrl(e.target.value)}
-                    onBlur={updateTimelineInfo}
                     placeholder="https://..."
-                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium text-[#1A1A1A] focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-[#999] uppercase tracking-widest">Project Password (for feedback)</label>
-                  <input 
-                    type="password"
-                    value={timelinePassword}
-                    onChange={(e) => setTimelinePassword(e.target.value)}
-                    onBlur={updateTimelineInfo}
-                    placeholder="Set password for feedback"
-                    className="w-full p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <label className="text-[10px] font-bold text-[#999] uppercase tracking-widest">Project Password (for access)</label>
+                  <div className="relative">
+                    <input 
+                      type={showTimelinePassword ? "text" : "password"}
+                      value={timelinePassword}
+                      onChange={(e) => setTimelinePassword(e.target.value)}
+                      placeholder="Set password for public access"
+                      className="w-full p-2 pr-10 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium text-[#1A1A1A] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTimelinePassword(!showTimelinePassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[#999] hover:text-blue-600 transition-colors"
+                    >
+                      {showTimelinePassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 border-t border-[#F0F0F0] pt-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-[#999] uppercase tracking-widest">Authorized Clients (Optional)</label>
+                    <span className="text-[9px] text-[#999]">If empty, anyone with password can access.</span>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      placeholder="Client Name (match precisely)"
+                      onKeyPress={(e) => e.key === 'Enter' && addAuthorizedClient()}
+                      className="flex-1 p-2 bg-gray-50 border border-[#E5E5E5] rounded-lg text-xs font-medium text-[#1A1A1A] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button 
+                      onClick={addAuthorizedClient}
+                      className="px-4 py-2 bg-gray-100 text-[#666] rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-all"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {authorizedClients.map(client => (
+                      <span key={client} className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold border border-blue-100">
+                        {client}
+                        <button onClick={() => removeAuthorizedClient(client)} className="hover:text-red-500">
+                          <Plus size={12} className="rotate-45" />
+                        </button>
+                      </span>
+                    ))}
+                    {authorizedClients.length === 0 && (
+                      <span className="text-[10px] text-[#999] italic">No restrictions. Anyone with the password can enter.</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 flex items-center justify-between border-t border-[#F0F0F0] pt-6">
+                  <div className="flex flex-col gap-1">
+                    <AnimatePresence>
+                      {saveSuccess && (
+                        <motion.span 
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="text-[10px] font-bold text-green-600 flex items-center gap-1"
+                        >
+                          <CheckCircle2 size={12} />
+                          Settings Saved Successfully!
+                        </motion.span>
+                      )}
+                      {saveError && (
+                        <motion.span 
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="text-[10px] font-bold text-red-500 flex items-center gap-1"
+                        >
+                          <Plus size={12} className="rotate-45" />
+                          {saveError}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <button 
+                    onClick={updateTimelineInfo}
+                    disabled={isSavingSettings}
+                    className="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/10 disabled:opacity-50"
+                  >
+                    {isSavingSettings ? "Saving..." : "Save Settings"}
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -379,46 +572,21 @@ export default function TimelineView({ timelineId, isPublicView = false }: { tim
                   </h3>
                 </div>
 
-                {!isFeedbackAuthed && isPublicView && timeline?.password ? (
-                  <form onSubmit={handleFeedbackLogin} className="p-6 bg-amber-50 rounded-2xl border border-amber-100 space-y-4">
-                    <p className="text-xs text-amber-800 font-medium">Please sign in to leave project feedback.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input 
-                        type="text"
-                        required
-                        value={feedbackName}
-                        onChange={(e) => setFeedbackName(e.target.value)}
-                        placeholder="Your Name"
-                        className="p-3 bg-white border border-amber-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
-                      />
-                      <input 
-                        type="password"
-                        required
-                        value={feedbackPassword}
-                        onChange={(e) => setFeedbackPassword(e.target.value)}
-                        placeholder="Project Password"
-                        className="p-3 bg-white border border-amber-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
-                      />
-                    </div>
-                    {error && <p className="text-[10px] text-red-500 font-bold">{error}</p>}
-                    <button 
-                      type="submit"
-                      className="w-full bg-amber-500 text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-amber-600 transition-colors"
-                    >
-                      Sign In to Give Feedback
-                    </button>
-                  </form>
+                {!isTimelineAuthed && isPublicView && timeline?.password ? (
+                  <div className="text-center py-4">
+                    <p className="text-xs text-amber-600 font-medium italic">Login to project to see and leave feedback.</p>
+                  </div>
                 ) : (
                   <form onSubmit={handleFeedbackSubmit} className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <input 
                         type="text"
                         required
-                        readOnly={isFeedbackAuthed}
+                        readOnly={isTimelineAuthed}
                         value={feedbackName}
                         onChange={(e) => setFeedbackName(e.target.value)}
                         placeholder="Your Name"
-                        className={`p-3 bg-gray-50 border border-[#E5E5E5] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${isFeedbackAuthed ? "opacity-75 cursor-not-allowed" : ""}`}
+                        className={`p-3 bg-gray-50 border border-[#E5E5E5] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${isTimelineAuthed ? "opacity-75 cursor-not-allowed" : ""}`}
                       />
                       <button 
                         type="submit"
